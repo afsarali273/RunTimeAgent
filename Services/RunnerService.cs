@@ -32,6 +32,36 @@ public sealed class RunnerService : IDisposable
     private readonly object _runnerLogLock = new();
     private bool _disposed;
 
+        // Singapore timezone helper (local to RunnerService)
+        private static readonly TimeZoneInfo SingaporeTimeZone = InitSingaporeTimeZone();
+
+        private static TimeZoneInfo InitSingaporeTimeZone()
+        {
+            try
+            {
+                // Windows ID
+                return TimeZoneInfo.FindSystemTimeZoneById("Singapore Standard Time");
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                try
+                {
+                    // Linux/macOS ID
+                    return TimeZoneInfo.FindSystemTimeZoneById("Asia/Singapore");
+                }
+                catch
+                {
+                    return TimeZoneInfo.Utc;
+                }
+            }
+            catch (InvalidTimeZoneException)
+            {
+                return TimeZoneInfo.Utc;
+            }
+        }
+
+        private static DateTimeOffset SingaporeNow() => TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, SingaporeTimeZone);
+
     public RunnerService(Logger logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -204,9 +234,10 @@ public sealed class RunnerService : IDisposable
                 }
                 catch { /* ignore rotation errors */ }
 
-                var runnerLogPath = Path.Combine(logsDir, $"runner-{DateTime.UtcNow:yyyyMMdd-HHmmss}.log");
+                var now = SingaporeNow();
+                var runnerLogPath = Path.Combine(logsDir, $"runner-{now:yyyyMMdd-HHmmss}.log");
                 _runnerLogWriter = new StreamWriter(new FileStream(runnerLogPath, FileMode.Create, FileAccess.Write, FileShare.Read)) { AutoFlush = true };
-                _runnerLogWriter.WriteLine($"--- Runner log started {DateTime.UtcNow:O} ---");
+                _runnerLogWriter.WriteLine($"--- Runner log started {now:O} ---");
             }
             catch (Exception ex)
             {

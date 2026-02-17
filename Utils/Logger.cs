@@ -12,11 +12,42 @@ public sealed class Logger : IDisposable
     private readonly StreamWriter _writer;
     private bool _disposed;
 
+    // Singapore timezone helper (used for log filename and timestamps)
+    private static readonly TimeZoneInfo SingaporeTimeZone = InitSingaporeTimeZone();
+
+    private static TimeZoneInfo InitSingaporeTimeZone()
+    {
+        try
+        {
+            // Windows ID
+            return TimeZoneInfo.FindSystemTimeZoneById("Singapore Standard Time");
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            try
+            {
+                // Linux/macOS ID
+                return TimeZoneInfo.FindSystemTimeZoneById("Asia/Singapore");
+            }
+            catch
+            {
+                return TimeZoneInfo.Utc;
+            }
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+    }
+
+    private static DateTimeOffset SingaporeNow() => TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, SingaporeTimeZone);
+
     public Logger()
     {
         var logDirectory = Path.Combine(AppContext.BaseDirectory, "logs");
         Directory.CreateDirectory(logDirectory);
-        var logFile = Path.Combine(logDirectory, $"automation-agent-{DateTime.UtcNow:yyyyMMdd-HHmmss}.log");
+        var now = SingaporeNow();
+        var logFile = Path.Combine(logDirectory, $"automation-agent-{now:yyyyMMdd-HHmmss}.log");
         _writer = new StreamWriter(new FileStream(logFile, FileMode.Append, FileAccess.Write, FileShare.Read))
         {
             AutoFlush = true
@@ -33,7 +64,7 @@ public sealed class Logger : IDisposable
         }
 
         var builder = new StringBuilder();
-        builder.Append($"{DateTime.UtcNow:O} [{level}] {message}");
+        builder.Append($"{SingaporeNow():O} [{level}] {message}");
 
         if (exception is not null)
         {
