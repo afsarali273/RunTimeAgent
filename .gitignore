@@ -1,0 +1,24 @@
+# Build outputs
+bin/
+obj/
+
+# Logs and temp
+**/logs/
+*.log
+*.tmp
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Publish output
+publish/
+
+# IDE files
+.idea/
+*.iml
+
+# OS files
+Thumbs.db
+desktop.ini
