@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -16,14 +17,19 @@ public sealed class ApiService : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _listenerTask;
 
+    // dynamically-chosen localhost port for the API
+    public int Port { get; }
+
     public ApiService(RunnerService runnerService, Logger logger)
     {
         _runnerService = runnerService ?? throw new ArgumentNullException(nameof(runnerService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _listener.Prefixes.Add("http://localhost:9000/");
+
+        Port = FindAvailablePort();
+        _listener.Prefixes.Add($"http://localhost:{Port}/");
         _listener.Start();
         _listenerTask = Task.Run(() => ListenAsync(_cts.Token));
-        _ = _logger.InfoAsync("HTTP API server listening on http://localhost:9000.");
+        _ = _logger.InfoAsync($"HTTP API server listening on http://localhost:{Port}.");
     }
 
     private async Task ListenAsync(CancellationToken cancellationToken)
@@ -53,6 +59,16 @@ public sealed class ApiService : IDisposable
 
             _ = Task.Run(() => HandleRequestAsync(context), cancellationToken);
         }
+    }
+
+    private static int FindAvailablePort()
+    {
+        // bind to port 0 to let the OS pick a free ephemeral port, then release it
+        var tcp = new TcpListener(IPAddress.Loopback, 0);
+        tcp.Start();
+        var port = ((IPEndPoint)tcp.LocalEndpoint).Port;
+        tcp.Stop();
+        return port;
     }
 
     private async Task HandleRequestAsync(HttpListenerContext context)

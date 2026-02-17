@@ -47,7 +47,7 @@ Notes:
 - Visual status via tray icon & tooltip (Running / Stopped / Error).  
 - Watchdog: automatically restarts the runner when it exits unexpectedly.  
 - Prevents system sleep & display turn‑off while active (keeps screen awake / prevents screensaver).  
-- Local HTTP API (control and status): `http://localhost:9000` (see endpoints).  
+- Local HTTP API (control and status): `http://localhost:<port>` — the application chooses a free localhost port at startup; check the application log for the actual port.  
 - Launcher: executes `run.cmd` (must be present in application directory).  
 - Per-run log files: `logs/automation-agent-<timestamp>.log`.  
 - Auto-start registry entry (adds HKCU Run key on first run).  
@@ -57,7 +57,7 @@ Notes:
 
 ## HTTP API (local) 🔌
 
-Base: `http://localhost:9000`
+Base: `http://localhost:<port>` (see application log to find the port)
 
 - GET  /status    — returns { status: "running|stopped|error" }
 - POST /start     — starts the runner
@@ -66,12 +66,12 @@ Base: `http://localhost:9000`
 
 Examples:
 
-  curl http://localhost:9000/status
-  curl -X POST http://localhost:9000/start
+  curl http://localhost:<port>/status  # replace <port> with the port shown in the application log
+  curl -X POST http://localhost:<port>/start  # replace <port> with the port shown in the application log
 
 Or PowerShell:
 
-  Invoke-RestMethod -Uri http://localhost:9000/status -Method GET
+  Invoke-RestMethod -Uri http://localhost:<port>/status -Method GET  # replace <port> with the port shown in the application log
   Invoke-RestMethod -Uri http://localhost:9000/start -Method POST
 
 ---
@@ -89,7 +89,7 @@ Or PowerShell:
 
 - Replace `run.cmd` with your runner script — the app will call `cmd.exe /c run.cmd` from its working directory.  
 - To bundle `run.cmd` in published output, keep it next to the exe (project already copies it to publish output).  
-- Port: API listens on `localhost:9000` (change requires code edit).
+- Port: API listens on a random available `localhost` port. Check the agent log for the selected port (search for "HTTP API server listening").
 
 ---
 

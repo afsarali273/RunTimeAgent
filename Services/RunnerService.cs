@@ -224,7 +224,7 @@ public sealed class RunnerService : IDisposable
                 Directory.CreateDirectory(logsDir);
 
                 // Keep only the most recent N runner log files to limit disk use.
-                const int maxRunnerLogs = 5;
+                const int maxRunnerLogs = 2;
                 try
                 {
                     var existing = new DirectoryInfo(logsDir).GetFiles("runner-*.log").OrderByDescending(f => f.CreationTimeUtc).ToArray();
