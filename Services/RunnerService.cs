@@ -32,6 +32,14 @@ public sealed class RunnerService : IDisposable
     private readonly object _runnerLogLock = new();
     private bool _disposed;
 
+    // Restart protection: prevent tight restart loops if runner continuously fails
+    private readonly object _restartLock = new();
+    private DateTime _restartWindowStart = DateTime.MinValue;
+    private int _restartCountInWindow = 0;
+    private static readonly TimeSpan RestartWindow = TimeSpan.FromMinutes(1);
+    private const int MaxRestartsPerWindow = 5;
+    private static readonly TimeSpan RestartDelayOnFailure = TimeSpan.FromSeconds(5);
+
         // Singapore timezone helper (local to RunnerService)
         private static readonly TimeZoneInfo SingaporeTimeZone = InitSingaporeTimeZone();
 
@@ -235,7 +243,7 @@ public sealed class RunnerService : IDisposable
                 catch { /* ignore rotation errors */ }
 
                 var now = SingaporeNow();
-                var runnerLogPath = Path.Combine(logsDir, $"runner-{now:yyyyMMdd-HHmmss}.log");
+                var runnerLogPath = Path.Combine(logsDir, $"runner-{now:yyyyMMdd-HHmmss-fff}.log");
                 _runnerLogWriter = new StreamWriter(new FileStream(runnerLogPath, FileMode.Create, FileAccess.Write, FileShare.Read)) { AutoFlush = true };
                 _runnerLogWriter.WriteLine($"--- Runner log started {now:O} ---");
             }
@@ -262,6 +270,14 @@ public sealed class RunnerService : IDisposable
             }
 
             _process = process;
+
+            // reset restart protection on successful start
+            lock (_restartLock)
+            {
+                _restartWindowStart = DateTime.MinValue;
+                _restartCountInWindow = 0;
+            }
+
             UpdateState(RunnerState.Running);
             await _logger.InfoAsync("Runner process started.");
         }
@@ -329,6 +345,7 @@ public sealed class RunnerService : IDisposable
 
     private void Process_Exited(object? sender, EventArgs args)
     {
+        // Run cleanup under the operation lock, then schedule restart outside the lock
         Task.Run(async () =>
         {
             await _operationLock.WaitAsync();
@@ -352,7 +369,54 @@ public sealed class RunnerService : IDisposable
             {
                 _operationLock.Release();
             }
+
+            // schedule an immediate, protected restart (watchdog still remains as a safety net)
+            await TryRestartWithBackoffAsync();
         });
+    }
+
+    private async Task TryRestartWithBackoffAsync()
+    {
+        DateTime now = DateTime.UtcNow;
+        int recentCount;
+        bool allowRestart;
+
+        lock (_restartLock)
+        {
+            if (_restartWindowStart == DateTime.MinValue || now - _restartWindowStart > RestartWindow)
+            {
+                _restartWindowStart = now;
+                _restartCountInWindow = 1;
+                allowRestart = true;
+            }
+            else
+            {
+                _restartCountInWindow++;
+                allowRestart = _restartCountInWindow <= MaxRestartsPerWindow;
+            }
+
+            recentCount = _restartCountInWindow;
+        }
+
+        if (!allowRestart)
+        {
+            await _logger.ErrorAsync($"Runner has failed {recentCount} times within {RestartWindow.TotalSeconds} seconds — automatic restart suppressed.");
+            UpdateState(RunnerState.Error);
+            return;
+        }
+
+        // small delay to avoid tight restart loops
+        await Task.Delay(RestartDelayOnFailure);
+
+        try
+        {
+            await _logger.InfoAsync("Attempting automatic restart of runner (exit detected).");
+            await RestartAsync();
+        }
+        catch (Exception ex)
+        {
+            await _logger.ErrorAsync("Automatic restart attempt failed.", ex);
+        }
     }
 
     private void UpdateState(RunnerState newState)
